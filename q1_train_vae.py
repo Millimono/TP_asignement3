@@ -118,6 +118,10 @@ def train(epoch):
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_loader.dataset)))
+    avg_train_loss = train_loss / len(train_loader.dataset)
+
+    return avg_train_loss
+
 
 
 def test(epoch):
@@ -147,6 +151,15 @@ if __name__ == "__main__":
         train_losses.append(train_loss)
         test_losses.append(test_loss)
     torch.save(model, 'model.pt')
+
+    # Sauvegarder les pertes dans un fichier JSON
+    losses_data = {
+        'train_losses': train_losses,
+        'test_losses': test_losses,
+        'epochs': args.epochs
+    }
+    with open('losses.json', 'w') as f:
+        json.dump(losses_data, f, indent=4)
 
     # Plotting the training and validation loss
     plt.plot(range(1, args.epochs + 1), train_losses, label='Train Loss')
