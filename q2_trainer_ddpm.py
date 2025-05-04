@@ -110,38 +110,43 @@ class Trainer:
     def sample(self, n_steps=None, set_seed=False):
         if set_seed:
             torch.manual_seed(42)
-        if n_steps is None:
-            n_steps = self.args.n_steps
-            
-        with torch.no_grad():
-            # $x_T \sim p(x_T) = \mathcal{N}(x_T; \mathbf{0}, \mathbf{I})$
-            x = torch.randn(
-                [
-                    self.args.n_samples,
-                    self.args.image_channels,
-                    self.args.image_size,
-                    self.args.image_size,
-                ],
-                device=self.args.device,
-            )
-            if self.args.nb_save is not None:
-                saving_steps = [self.args["n_steps"] - 1]
-            # Remove noise for $T$ steps
-            for t_ in tqdm(range(n_steps)):
-                
-                # TODO: Sample x_t 
-                raise NotImplementedError
-            
-                if self.args.nb_save is not None and t_ in saving_steps:
-                    print(f"Showing/saving samples from epoch {self.current_epoch}")
-                    self.show_save(
-                        x,
-                        show=True,
-                        save=True,
-                        file_name=f"DDPM_epoch_{self.current_epoch}_sample_{t_}.png",
-                    )
-        return x
+        
+        n_steps = n_steps if n_steps is not None else self.args.n_steps
 
+        with torch.no_grad():
+            # Initialize x_T ~ N(0, I)
+            x = torch.randn(
+                (self.args.n_samples,
+                self.args.image_channels,
+                self.args.image_size,
+                self.args.image_size),
+                device=self.args.device
+            )
+
+        # Define saving steps if needed
+        saving_steps = {self.args.n_steps - 1} if hasattr(self.args, 'nb_save') and self.args.nb_save is not None else set()
+
+        # Denoising loop
+        for t in tqdm(range(n_steps), desc="Sampling"):
+            t_tensor = torch.full(
+                (x.size(0),),
+                n_steps - 1 - t,
+                device=self.args.device,
+                dtype=torch.long
+            )
+            x = self.diffusion.p_sample(x, t_tensor)
+
+            # Save samples at specified steps
+            if t in saving_steps:
+                print(f"Showing/saving samples from epoch {self.current_epoch}")
+                self.show_save(
+                    x,
+                    show=True,
+                    save=True,
+                    file_name=f"DDPM_epoch{self.current_epoch}_step{t}.png"
+                )    
+        return x
+    
     def save_model(self):
         torch.save({
                 'epoch': self.current_epoch,
@@ -150,6 +155,7 @@ class Trainer:
                 }, args.MODEL_PATH)
 
     def show_save(self, img_tensor, show=True, save=True, file_name="sample.png"):
+        import os
         fig, axs = plt.subplots(3, 3, figsize=(10, 10))  # Create a 4x4 grid of subplots
         assert img_tensor.shape[0] >= 9, "Number of images should be at least 9"
         img_tensor = img_tensor[:9]
@@ -162,7 +168,12 @@ class Trainer:
 
         plt.tight_layout()
         if save:
-            plt.savefig('images/' + file_name)
+            # Ensure the directory exists
+            save_dir = "/autograder/source/images/"
+            os.makedirs(save_dir, exist_ok=True)  # Create the directory if it doesn't exist
+            save_path = os.path.join(save_dir, file_name)
+            plt.savefig(save_path)
+            #plt.savefig('images/' + file_name)
         if show:
             plt.show()
         plt.close(fig)
@@ -193,9 +204,11 @@ class Trainer:
         images.append(x.detach().cpu().numpy())  # Initial noise
 
         for step in tqdm(range(1, n_steps+1, 1)):
-            # TODO: Generate intermediate steps
+            # Generate intermediate steps
             # Hint: if GPU crashes, it might be because you accumulate unused gradient ... don't forget to remove gradient
-            raise NotImplementedError
+            t = n_steps - step  # t va de T-1 à 0
+            t_tensor = torch.full((n_samples,), t, device=self.args.device, dtype=torch.long)
+            x = self.diffusion.p_sample(x, t_tensor, set_seed=set_seed)
         
             # Store intermediate result if it's a step we want to display
             if step in steps_to_show:
