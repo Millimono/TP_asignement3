@@ -8,18 +8,13 @@ from torchvision import datasets, transforms
 from torchvision.utils import save_image
 from q1_vae import *
 import matplotlib.pyplot as plt
-import json
+
 
 parser = argparse.ArgumentParser(description='VAE MNIST Example')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                     help='input batch size for training (default: 128)')
-
-# parser.add_argument('--epochs', type=int, default=10, metavar='N',
-#                     help='number of epochs to train (default: 10)')
-
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 20)')
-
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--no-mps', action='store_true', default=False,
@@ -40,11 +35,11 @@ else:
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True,
+    datasets.MNIST('./data', train=True, download=True,
                    transform=transforms.ToTensor()),
     batch_size=args.batch_size, shuffle=True, **kwargs)
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, transform=transforms.ToTensor()),
+    datasets.MNIST('./data', train=False, transform=transforms.ToTensor()),
     batch_size=args.batch_size, shuffle=False, **kwargs)
 
 
@@ -78,27 +73,15 @@ class VAE(nn.Module):
 
 
 model = VAE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3) 
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 
 def loss_function(recon_x, x, mu, logvar):
-    ## TO DO: Implement the loss function using your functions from q1_solution.py
-    ## use the following structure:
-    # kl = kl_gaussian_gaussian_analytic(mu_q=?, logvar_q=?, mu_p=?, logvar_p=?).sum()
-    # recon_loss = (?).sum()
-    # return recon_loss + kl
-    #raise notImplementedError("Implement the loss function using your functions from q1_solution.py")
-
     recon_loss = -log_likelihood_bernoulli(recon_x, x).sum()
-    
-    # KL divergence: analytical KL between q(z|x) and p(z)
-    mu_p = torch.zeros_like(mu)  # Prior mean: zero
-    logvar_p = torch.zeros_like(logvar)  # Prior log-variance: zero (variance=1)
+    mu_p = torch.zeros_like(mu)
+    logvar_p = torch.zeros_like(logvar)
     kl = kl_gaussian_gaussian_analytic(mu_q=mu, logvar_q=logvar, mu_p=mu_p, logvar_p=logvar_p).sum()
-    
     return recon_loss + kl
-
-
 
 def train(epoch):
     model.train()
@@ -119,59 +102,42 @@ def train(epoch):
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_loader.dataset)))
-    avg_train_loss = train_loss / len(train_loader.dataset)
-
-    return avg_train_loss
-
-
 
 def test(epoch):
     model.eval()
     test_loss = 0
     with torch.no_grad():
-        for i, (data, _) in enumerate(test_loader):
+        for data, _ in test_loader:
             data = data.to(device)
             recon_batch, mu, logvar = model(data)
             test_loss += loss_function(recon_batch, data, mu, logvar).item()
     test_loss /= len(test_loader.dataset)
-    print('====> Test set loss: {:.4f}'.format(test_loss))
+    print('====> Test Epoch: {} Average loss: {:.4f}'.format(epoch, test_loss))
     return test_loss
 
-# if __name__ == "__main__":
-#     for epoch in range(1, args.epochs + 1):
-#         train(epoch)
+train_losses = []
+test_losses = []
+for epoch in range(1, args.epochs + 1):
+    train_loss = train(epoch)
+    test_loss = test(epoch)
+    train_losses.append(train_loss)
+    test_losses.append(test_loss)
 
-#     torch.save(model, 'model.pt')
+# Sauvegarde du modèle
+torch.save(model, 'model.pt')
+
+# Tracé des pertes
+plt.plot(range(1, args.epochs + 1), train_losses, label='Train Loss')
+plt.plot(range(1, args.epochs + 1), test_losses, label='Test Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Average Loss')
+plt.title('Training and Validation Loss')
+plt.legend()
+plt.savefig('loss_plot.png')
+plt.show()
 
 if __name__ == "__main__":
-    train_losses = []
-    test_losses = []
     for epoch in range(1, args.epochs + 1):
-        train_loss = train(epoch)
-        test_loss = test(epoch)
-        train_losses.append(train_loss)
-        test_losses.append(test_loss)
+        train(epoch)
+
     torch.save(model, 'model.pt')
-
-    # Sauvegarder les pertes dans un fichier JSON
-    losses_data = {
-        'train_losses': train_losses,
-        'test_losses': test_losses,
-        'epochs': args.epochs
-    }
-    with open('losses.json', 'w') as f:
-        json.dump(losses_data, f, indent=4)
-
-    # Plotting the training and validation loss
-    plt.plot(range(1, args.epochs + 1), train_losses, label='Train Loss')
-    plt.plot(range(1, args.epochs + 1), test_losses, label='Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss')
-    plt.legend()
-    plt.savefig('loss_plot.png')
-    plt.show()
-
-    print(f'Final validation loss: {test_losses[-1]:.4f}')
-
-#python q1_train_vae.py --epochs 20
